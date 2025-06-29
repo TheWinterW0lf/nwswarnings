@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NWS Active Alerts – United States</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--minor:#c6efce;--mod:#ffeb9c;--sev:#ffc7ce}
+body{font:14px/1.4 system-ui;margin:0;padding:1rem;color:#111}
+h1{font-size:1.2rem;margin:.2rem 0 .6rem}
+#updated{font-size:.85rem;color:#555;margin-bottom:0.8rem}
+select{font-size:.9rem;margin-bottom:.8rem;padding:.2rem .3rem}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{border:1px solid #ddd;padding:.4rem .5rem}
+th{background:#fafafa;position:sticky;top:0;text-align:left}
+tr.none td{padding:1rem;text-align:center;font-style:italic}
+tr.Severe,tr.Extreme{background:var(--sev)}
+tr.Moderate{background:var(--mod)}
+tr.Minor,tr.Unknown{background:var(--minor)}
+</style>
+</head>
+<body>
+<h1>🛑 Active NWS Watches, Warnings & Advisories – U.S.</h1>
+<div id="updated">Loading…</div>
+
+<label for="filter">Show:</label>
+<select id="filter">
+  <option value="all">All</option>
+  <option value="warnings">Warnings</option>
+  <option value="watches">Watches</option>
+  <option value="advisories">Advisories</option>
+  <option value="statements">Statements</option>
+</select>
+
+<table id="alerts">
+  <thead>
+    <tr><th>Event</th><th>Severity</th><th>Areas</th><th>Expires</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+let allAlerts=[];
+const updatedEl=document.getElementById('updated');
+const tbody=document.querySelector('#alerts tbody');
+const sevOrder={Extreme:0,Severe:1,Moderate:2,Minor:3,Unknown:4};
+
+function matchesFilter(eventName,filter){
+  eventName=eventName.toLowerCase();
+  switch(filter){
+    case 'warnings': return eventName.includes('warning');
+    case 'watches': return eventName.includes('watch');
+    case 'advisories': return eventName.includes('advisory');
+    case 'statements': return eventName.includes('statement');
+    default: return true;
+  }
+}
+
+function render(){
+  const filter=document.getElementById('filter').value;
+  tbody.innerHTML='';
+  const list=allAlerts.filter(f=>matchesFilter(f.properties.event,filter));
+  if(list.length===0){
+    tbody.innerHTML='<tr class="none"><td colspan="4">No alerts for this filter 🎉</td></tr>';
+    return;
+  }
+  list.sort((a,b)=>{
+    const sa=sevOrder[a.properties.severity] ?? 4;
+    const sb=sevOrder[b.properties.severity] ?? 4;
+    if(sa!==sb) return sa-sb;
+    return (new Date(a.properties.ends||a.properties.onset||0)) - (new Date(b.properties.ends||b.properties.onset||0));
+  });
+  list.forEach(f=>{
+    const p=f.properties;
+    const tr=document.createElement('tr');tr.className=p.severity||'Unknown';
+    const areaList=(p.areaDesc||'').split(';').map(s=>s.trim());
+    const areaShort=areaList.slice(0,2).join(', ')+(areaList.length>2?' …':'');
+    tr.innerHTML=`<td>${p.event}</td><td>${p.severity}</td><td>${areaShort}</td>
+                  <td>${p.ends?new Date(p.ends).toLocaleString():'—'}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+(async ()=>{
+  const endpoint='https://corsproxy.io/?https://api.weather.gov/alerts/active';
+  try{
+    const resp=await fetch(endpoint);
+    if(!resp.ok) throw new Error(resp.status+' '+resp.statusText);
+    const data=await resp.json();
+    allAlerts=data.features||[];
+    updatedEl.textContent='Updated '+new Date().toLocaleString()+' • '+allAlerts.length+' alerts';
+    render();
+  }catch(e){
+    updatedEl.textContent='Error: '+e.message;
+  }
+})();
+
+document.getElementById('filter').addEventListener('change',render);
+</script>
+</body>
+</html>
